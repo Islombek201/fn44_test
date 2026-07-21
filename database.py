@@ -1,15 +1,11 @@
 import psycopg2
+import os
 from dotenv import load_dotenv
 load_dotenv()
+DATABASE_URL = os.getenv("DATABASE_URL")
 
 def get_db_connection():
-    return psycopg2.connect(
-        host="localhost",
-        database="test_dp",
-        user="postgres",
-        password="20102008",
-        port=5432
-    )
+    return psycopg2.connect(DATABASE_URL)
 
 def add_user(telegram_id: int, full_name: str):
     conn = None
