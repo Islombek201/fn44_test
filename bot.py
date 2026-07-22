@@ -1,5 +1,5 @@
 import os
-import asyncio
+import sys
 import logging
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import CommandStart, Command
@@ -7,18 +7,21 @@ from aiogram.enums import ParseMode
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 from aiohttp import web
 
-# Baza funksiyalari
+# Baza funksiyalarini import qilish
 from database import add_user, get_all_books, search_books
 
+# Loglarni sozlash
 logging.basicConfig(level=logging.INFO)
 
-# Render o'zi beradigan env o'zgaruvchilar
+# Render muhitidan o'zgaruvchilarni olish
 PORT = int(os.getenv("PORT", 8080))
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 WEBHOOK_HOST = os.getenv("WEBHOOK_HOST")
 
+# Render sozlamalari noto'g'ri bo'lsa aniq xato beradi
 if not BOT_TOKEN or not WEBHOOK_HOST:
-    logging.error("BOT_TOKEN yoki WEBHOOK_HOST kiritilmagan!")
+    logging.critical("CRITICAL ERROR: BOT_TOKEN yoki WEBHOOK_HOST Render Environment'da topilmadi!")
+    sys.exit(1)
 
 WEBHOOK_PATH = f"/webhook/{BOT_TOKEN}"
 WEBHOOK_URL = f"{WEBHOOK_HOST}{WEBHOOK_PATH}"
@@ -99,20 +102,18 @@ async def echo_handler(message: types.Message):
 
 async def on_startup(app):
     await bot.set_webhook(url=WEBHOOK_URL, drop_pending_updates=True)
-    logging.info(f"Webhook o'rnatildi: {WEBHOOK_URL}")
+    logging.info(f"Webhook Telegram'ga o'rnatildi: {WEBHOOK_URL}")
 
 
 def main():
     app = web.Application()
     app.on_startup.append(on_startup)
 
-    # Webhook handler'ni aiohttp serverga ulash
     webhook_requests_handler = SimpleRequestHandler(dispatcher=dp, bot=bot)
     webhook_requests_handler.register(app, path=WEBHOOK_PATH)
 
     setup_application(app, dp, bot=bot)
 
-    # Serverni ishga tushirish
     web.run_app(app, host="0.0.0.0", port=PORT)
 
 
