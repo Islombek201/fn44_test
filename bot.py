@@ -8,20 +8,29 @@ from aiogram.enums import ParseMode
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 from aiohttp import web
 
+# Ma'lumotlar bazasi funksiyalarini import qilish
 from database import add_user, get_all_books, search_books
 
 dotenv.load_dotenv()
 
+# Logging sozlamalari
+logging.basicConfig(level=logging.INFO)
 
+# Muhit o'zgaruvchilarini olish
 PORT = int(os.getenv("PORT", 8080))
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 WEBHOOK_HOST = os.getenv("WEBHOOK_HOST")
 
+# Render’da token yoki host o'rnatilmagan bo'lsa, xatolikni aniq ko'rsatish
+if not BOT_TOKEN:
+    raise ValueError("XATO: BOT_TOKEN Environment Variable topilmadi!")
+if not WEBHOOK_HOST:
+    raise ValueError("XATO: WEBHOOK_HOST Environment Variable topilmadi!")
+
 WEBHOOK_PATH = f"/webhook/{BOT_TOKEN}"
 WEBHOOK_URL = f"{WEBHOOK_HOST}{WEBHOOK_PATH}"
 
-logging.basicConfig(level=logging.INFO)
-
+# Bot va Dispatcher yaratish
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
@@ -102,11 +111,13 @@ async def echo_handler(message: types.Message):
 
 
 async def on_startup(bot: Bot):
-    await bot.set_webhook(url=WEBHOOK_URL, drop_pending_updates=True)
+    # Oldingi eski kelgan xabarlarni o'chirib, yangi Webhook'ni o'rnatish
+    await bot.delete_webhook(drop_pending_updates=True)
+    await bot.set_webhook(url=WEBHOOK_URL)
+    logging.info(f"Webhook o'rnatildi: {WEBHOOK_URL}")
 
 
 async def main():
-
     dp.startup.register(on_startup)
 
     app = web.Application()
@@ -116,12 +127,13 @@ async def main():
 
     setup_application(app, dp, bot=bot)
 
+    # Serverni Render portida ishga tushirish
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", PORT)
     await site.start()
 
-
+    logging.info(f"Server {PORT}-portda muvaffaqiyatli ishga tushdi.")
     await asyncio.Event().wait()
 
 
