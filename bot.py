@@ -9,20 +9,21 @@ from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_applicati
 from aiohttp import web
 
 from database import add_user, get_all_books, search_books
+
 dotenv.load_dotenv()
 
+
 PORT = int(os.getenv("PORT", 8080))
-
-BOT_TOKEN = os.getenv('BOT_TOKEN')
-bot = Bot(token=BOT_TOKEN)
-logging.basicConfig(level=logging.INFO)
-dp = Dispatcher()
-
+BOT_TOKEN = os.getenv("BOT_TOKEN")
 WEBHOOK_HOST = os.getenv("WEBHOOK_HOST")
-# Masalan: https://mening-botim.onrender.com
+
 WEBHOOK_PATH = f"/webhook/{BOT_TOKEN}"
 WEBHOOK_URL = f"{WEBHOOK_HOST}{WEBHOOK_PATH}"
 
+logging.basicConfig(level=logging.INFO)
+
+bot = Bot(token=BOT_TOKEN)
+dp = Dispatcher()
 
 
 @dp.message(CommandStart())
@@ -67,22 +68,29 @@ async def search_books_handler(message: types.Message):
     command_args = message.text.split(maxsplit=1)
 
     if len(command_args) < 2:
-        await message.answer("⚠ Iltimos, qidirmoqchi bo'lgan kitobingiz nomini yozing!\nMisol uchun: `/search Xamsa`",
-                             parse_mode=ParseMode.MARKDOWN)
+        await message.answer(
+            "⚠ Iltimos, qidirmoqchi bo'lgan kitobingiz nomini yozing!\nMisol uchun: `/search Xamsa`",
+            parse_mode=ParseMode.MARKDOWN
+        )
         return
+
     query_text = command_args[1].strip()
     found_books = search_books(query_text)
+
     if not found_books:
-        await message.answer("Kutubxonamizda bunday kitob topilmadi")
+        await message.answer("Kutubxonamizda bunday kitob topilmadi.")
         return
+
     for book in found_books:
         title = book[0]
         available_copies = book[1]
         if available_copies == 0:
             await message.answer(f"📖 *{title}*\nBu kitob ayni damda qolmagan", parse_mode=ParseMode.MARKDOWN)
         else:
-            await message.answer(f"🔍 *Topilgan kitob:* {title}\n📚 *Kutubxonada bor nusxasi:* {available_copies} ta",
-                                 parse_mode=ParseMode.MARKDOWN)
+            await message.answer(
+                f"🔍 *Topilgan kitob:* {title}\n📚 *Kutubxonada bor nusxasi:* {available_copies} ta",
+                parse_mode=ParseMode.MARKDOWN
+            )
 
 
 @dp.message()
@@ -94,22 +102,30 @@ async def echo_handler(message: types.Message):
 
 
 async def on_startup(bot: Bot):
-    await bot.set_webhook(url=WEBHOOK_URL)
+    await bot.set_webhook(url=WEBHOOK_URL, drop_pending_updates=True)
 
 
 async def main():
-    await bot.delete_webhook(drop_pending_updates=True)
+
     dp.startup.register(on_startup)
+
     app = web.Application()
+
     webhook_requests_handler = SimpleRequestHandler(dispatcher=dp, bot=bot)
     webhook_requests_handler.register(app, path=WEBHOOK_PATH)
 
-    setup_application(app,dp,bot=bot)
-    await web.run_app(app, host="0.0.0.0",port=PORT)
+    setup_application(app, dp, bot=bot)
+
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", PORT)
+    await site.start()
 
 
-    if __name__ == "__main__":
-        asyncio.run(main())
+    await asyncio.Event().wait()
+
+
+if __name__ == "__main__":
     try:
         asyncio.run(main())
     except (KeyboardInterrupt, SystemExit):
