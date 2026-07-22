@@ -1,36 +1,28 @@
 import os
 import asyncio
 import logging
-import dotenv
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import CommandStart, Command
 from aiogram.enums import ParseMode
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 from aiohttp import web
 
-# Ma'lumotlar bazasi funksiyalarini import qilish
+# Baza funksiyalari
 from database import add_user, get_all_books, search_books
 
-dotenv.load_dotenv()
-
-# Logging sozlamalari
 logging.basicConfig(level=logging.INFO)
 
-# Muhit o'zgaruvchilarini olish
+# Render o'zi beradigan env o'zgaruvchilar
 PORT = int(os.getenv("PORT", 8080))
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 WEBHOOK_HOST = os.getenv("WEBHOOK_HOST")
 
-# Render’da token yoki host o'rnatilmagan bo'lsa, xatolikni aniq ko'rsatish
-if not BOT_TOKEN:
-    raise ValueError("XATO: BOT_TOKEN Environment Variable topilmadi!")
-if not WEBHOOK_HOST:
-    raise ValueError("XATO: WEBHOOK_HOST Environment Variable topilmadi!")
+if not BOT_TOKEN or not WEBHOOK_HOST:
+    logging.error("BOT_TOKEN yoki WEBHOOK_HOST kiritilmagan!")
 
 WEBHOOK_PATH = f"/webhook/{BOT_TOKEN}"
 WEBHOOK_URL = f"{WEBHOOK_HOST}{WEBHOOK_PATH}"
 
-# Bot va Dispatcher yaratish
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
@@ -40,7 +32,10 @@ async def command_start_handler(message: types.Message):
     telegram_id = message.from_user.id
     full_name = message.from_user.full_name
 
-    add_user(telegram_id=telegram_id, full_name=full_name)
+    try:
+        add_user(telegram_id=telegram_id, full_name=full_name)
+    except Exception as e:
+        logging.error(f"Baza xatosi: {e}")
 
     welcome_text = (
         f"Assalomu alaykum, {full_name}!\n"
@@ -61,12 +56,8 @@ async def show_books_handler(message: types.Message):
         return
 
     response_text = "📖 **Kutubxonamizdagi kitoblar ro'yxati:**\n\n"
-
     for index, book in enumerate(books, start=1):
-        title = book[0]
-        author = book[1]
-        copies = book[2]
-
+        title, author, copies = book[0], book[1], book[2]
         response_text += f"{index}. {title} (Muallif: {author}) — Soni: {copies} ta\n"
 
     await message.answer(response_text, parse_mode=ParseMode.MARKDOWN)
@@ -91,8 +82,7 @@ async def search_books_handler(message: types.Message):
         return
 
     for book in found_books:
-        title = book[0]
-        available_copies = book[1]
+        title, available_copies = book[0], book[1]
         if available_copies == 0:
             await message.answer(f"📖 *{title}*\nBu kitob ayni damda qolmagan", parse_mode=ParseMode.MARKDOWN)
         else:
@@ -104,41 +94,27 @@ async def search_books_handler(message: types.Message):
 
 @dp.message()
 async def echo_handler(message: types.Message):
-    await message.answer(
-        f"Kechirasiz, men bu buyruqni tushunmadim: '{message.text}'\n"
-        f"Iltimos, /books yoki /search buyruqlaridan foydalaning."
-    )
+    await message.answer("Iltimos, /books yoki /search buyruqlaridan foydalaning.")
 
 
-async def on_startup(bot: Bot):
-    # Oldingi eski kelgan xabarlarni o'chirib, yangi Webhook'ni o'rnatish
-    await bot.delete_webhook(drop_pending_updates=True)
-    await bot.set_webhook(url=WEBHOOK_URL)
+async def on_startup(app):
+    await bot.set_webhook(url=WEBHOOK_URL, drop_pending_updates=True)
     logging.info(f"Webhook o'rnatildi: {WEBHOOK_URL}")
 
 
-async def main():
-    dp.startup.register(on_startup)
-
+def main():
     app = web.Application()
+    app.on_startup.append(on_startup)
 
+    # Webhook handler'ni aiohttp serverga ulash
     webhook_requests_handler = SimpleRequestHandler(dispatcher=dp, bot=bot)
     webhook_requests_handler.register(app, path=WEBHOOK_PATH)
 
     setup_application(app, dp, bot=bot)
 
-    # Serverni Render portida ishga tushirish
-    runner = web.AppRunner(app)
-    await runner.setup()
-    site = web.TCPSite(runner, "0.0.0.0", PORT)
-    await site.start()
-
-    logging.info(f"Server {PORT}-portda muvaffaqiyatli ishga tushdi.")
-    await asyncio.Event().wait()
+    # Serverni ishga tushirish
+    web.run_app(app, host="0.0.0.0", port=PORT)
 
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except (KeyboardInterrupt, SystemExit):
-        logging.info("Bot to'xtatildi!")
+    main()
